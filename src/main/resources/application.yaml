@@ -1,3 +1,15 @@
-spring:
-  application:
-    name: CloudWatchAWSService
+server:
+  port: 8080
+
+aws:
+  region: ap-south-1
+  s3:
+    bucket-name: my-spring-logs-bucket
+  cloudwatch:
+    log-group: /spring-demo/app-logs
+    log-stream: spring-boot-stream
+
+logging:
+  level:
+    root: INFO
+    com.example: DEBUG

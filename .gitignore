@@ -1,0 +1,75 @@
+# Build output
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Maven
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+*.log
+logs/
+log/
+spring-shell.log
+
+# Local environment and secrets
+.env
+.env.*
+*.env
+!.env.example
+.aws/
+aws-credentials
+application-local.yml
+application-local.yaml
+application-local.properties
+**/secret*.yml
+**/secret*.yaml
+**/secret*.properties
+**/secrets*.yml
+**/secrets*.yaml
+**/secrets*.properties
+
+# IDEs and editors
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+*.code-workspace
+
+# Eclipse / STS
+.apt_generated/
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+bin/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+# OS files
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Keep nested source directories named like build output if ever needed.
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+!**/src/main/**/build/
+!**/src/test/**/build/

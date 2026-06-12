@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- Console appender (local dev) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- AWS CloudWatch Logs appender -->
+    <appender name="CLOUD_WATCH" class="ca.pjer.logback.AwsLogsAppender">
+
+        <!-- CloudWatch Log Group name (must already exist or set createIfNeeded=true) -->
+        <logGroupName>/spring-demo/app-logs</logGroupName>
+
+        <!-- Log Stream name — use ${instanceId} in EC2 for per-instance streams -->
+        <logStreamName>spring-boot-stream</logStreamName>
+
+        <!-- AWS region -->
+        <region>ap-south-1</region>
+
+        <!-- Flush every 2 seconds even if buffer isn't full -->
+        <flushPeriod>2000</flushPeriod>
+
+        <!-- Max events per batch (CloudWatch limit is 10,000) -->
+        <maxBatchCount>128</maxBatchCount>
+
+        <!-- Format: plain text is fine; JSON is better for querying -->
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+
+    </appender>
+
+    <!-- Async wrapper — prevents logging from blocking request threads -->
+    <appender name="ASYNC_CW" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="CLOUD_WATCH"/>
+        <neverBlock>true</neverBlock>
+        <queueSize>512</queueSize>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_CW"/>
+    </root>
+
+</configuration>
