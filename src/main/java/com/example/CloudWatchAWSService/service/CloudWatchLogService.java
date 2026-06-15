@@ -1,14 +1,14 @@
 package com.example.CloudWatchAWSService.service;
 
+import com.amazonaws.services.logs.AWSLogs;
+import com.amazonaws.services.logs.model.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
-import software.amazon.awssdk.services.cloudwatchlogs.model.*;
 
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Slf4j
@@ -16,83 +16,120 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CloudWatchLogService {
 
-    private final CloudWatchLogsClient logsClient;
+    private final AWSLogs cloudWatchLogs;
+
 
     @Value("${aws.cloudwatch.log-group}")
-    private String logGroup;
+    private String logGroupName;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Fetch all log events from the last N minutes using filterLogEvents.
-    // filterLogEvents lets you search across ALL log streams in a log group
-    // and supports time-range filtering — perfect for "last 30 minutes".
-    // ─────────────────────────────────────────────────────────────────────────
-    public List<FilteredLogEvent> getLogsByMinutes(int minutes) {
+    @Value("${aws.cloudwatch.log-stream}")
+    private String logStreamName;
 
-        // Calculate the time window
-        Instant now       = Instant.now();
-        Instant startTime = now.minusSeconds((long) minutes * 60);
+    /**
+     * Send log message to AWS CloudWatch
+     */
+    public synchronized void logMessageToCloudWatch(String message) {
 
-        log.info("Querying CloudWatch logs from {} to {} ({} min)",
-                startTime, now, minutes);
+        try {
+            ensureLogGroupAndStreamExist();
 
-        List<FilteredLogEvent> allEvents = new ArrayList<>();
-        String nextToken = null;
+            // Create Log Event
+            InputLogEvent logEvent = new InputLogEvent()
+                    .withTimestamp(System.currentTimeMillis())
+                    .withMessage(message);
 
-        // CloudWatch paginates results — loop until all pages are fetched
-        do {
-            FilterLogEventsRequest.Builder requestBuilder = FilterLogEventsRequest.builder()
-                    .logGroupName(logGroup)
-                    .startTime(startTime.toEpochMilli())   // milliseconds since epoch
-                    .endTime(now.toEpochMilli())            // milliseconds since epoch
-                    .limit(10_000);                         // max per page
+            // Get sequence token
+            String sequenceToken = getSequenceToken();
 
-            if (nextToken != null) {
-                requestBuilder.nextToken(nextToken);
+            // Build request
+            PutLogEventsRequest request = new PutLogEventsRequest()
+                    .withLogGroupName(logGroupName)
+                    .withLogStreamName(logStreamName)
+                    .withLogEvents(Collections.singletonList(logEvent));
+
+            // Add sequence token if present
+            if (sequenceToken != null) {
+                request.setSequenceToken(sequenceToken);
             }
 
-            FilterLogEventsResponse response =
-                    logsClient.filterLogEvents(requestBuilder.build());
+            // Send log
+            PutLogEventsResult result = cloudWatchLogs.putLogEvents(request);
 
-            allEvents.addAll(response.events());
-            nextToken = response.nextToken();   // null when last page reached
+            log.info("Successfully sent log to CloudWatch.");
+            log.debug("Next Sequence Token : {}", result.getNextSequenceToken());
 
-            log.debug("Fetched page with {} events, nextToken={}",
-                    response.events().size(), nextToken);
+        } catch (ResourceNotFoundException ex) {
 
-        } while (nextToken != null);
+            log.error("CloudWatch Log Group or Log Stream does not exist.", ex);
 
-        log.info("Total log events fetched: {} for last {} minutes", allEvents.size(), minutes);
-        return allEvents;
-    }
+        } catch (InvalidSequenceTokenException ex) {
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Creates the CloudWatch Log Group if it doesn't exist yet.
-    // Call once at startup via ApplicationRunner.
-    // ─────────────────────────────────────────────────────────────────────────
-    public void ensureLogGroupExists() {
-        try {
-            logsClient.createLogGroup(r -> r.logGroupName(logGroup));
-            log.info("Created CloudWatch log group: {}", logGroup);
-        } catch (ResourceAlreadyExistsException e) {
-            log.debug("Log group already exists: {}", logGroup);
+            log.error("Invalid Sequence Token.", ex);
+
+        } catch (DataAlreadyAcceptedException ex) {
+
+            log.warn("Duplicate log event. Already accepted.", ex);
+
+        } catch (Exception ex) {
+
+            log.error("Error sending log to CloudWatch.", ex);
+
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Creates a Subscription Filter so CloudWatch automatically triggers
-    // your Lambda for every log event written to this log group.
-    // Run once via setup API or CLI.
-    // ─────────────────────────────────────────────────────────────────────────
-    public void createSubscriptionFilter(String lambdaArn) {
-        PutSubscriptionFilterRequest request = PutSubscriptionFilterRequest.builder()
-                .logGroupName(logGroup)
-                .filterName("AllLogsToS3")
-                .filterPattern("")                              // "" = match all events
-                .destinationArn(lambdaArn)
-                .distribution(Distribution.BY_LOG_STREAM)
-                .build();
+    /**
+     * Fetch latest upload sequence token
+     */
+    private String getSequenceToken() {
 
-        logsClient.putSubscriptionFilter(request);
-        log.info("Subscription filter created — Lambda: {}", lambdaArn);
+        DescribeLogStreamsRequest request = new DescribeLogStreamsRequest()
+                .withLogGroupName(logGroupName)
+                .withLogStreamNamePrefix(logStreamName);
+
+        DescribeLogStreamsResult result =
+                cloudWatchLogs.describeLogStreams(request);
+
+        for (LogStream stream : result.getLogStreams()) {
+
+            if (stream.getLogStreamName().equals(logStreamName)) {
+
+                return stream.getUploadSequenceToken();
+            }
+        }
+
+        return null;
+    }
+
+    private void ensureLogGroupAndStreamExist() {
+        try {
+            cloudWatchLogs.createLogGroup(new CreateLogGroupRequest(logGroupName));
+            log.info("Created CloudWatch log group: {}", logGroupName);
+        } catch (ResourceAlreadyExistsException ex) {
+            log.debug("CloudWatch log group already exists: {}", logGroupName);
+        }
+
+        try {
+            cloudWatchLogs.createLogStream(new CreateLogStreamRequest(logGroupName, logStreamName));
+            log.info("Created CloudWatch log stream: {}", logStreamName);
+        } catch (ResourceAlreadyExistsException ex) {
+            log.debug("CloudWatch log stream already exists: {}", logStreamName);
+        }
+    }
+
+    public List<FilteredLogEvent> getLogsByMinutes(int minutes) {
+
+        long endTime = Instant.now().toEpochMilli();
+        long startTime = Instant.now()
+                .minusSeconds(minutes * 60L)
+                .toEpochMilli();
+
+        FilterLogEventsRequest request = new FilterLogEventsRequest()
+                .withLogGroupName(logGroupName)
+                .withStartTime(startTime)
+                .withEndTime(endTime);
+
+        FilterLogEventsResult result = cloudWatchLogs.filterLogEvents(request);
+
+        return result.getEvents();
     }
 }

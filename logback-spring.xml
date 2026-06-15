@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <springProperty scope="context" name="AWS_REGION" source="aws.region" defaultValue="ap-south-1"/>
+    <springProperty scope="context" name="CW_LOG_GROUP" source="aws.cloudwatch.log-group" defaultValue="sprint-boot-application"/>
+    <springProperty scope="context" name="CW_LOG_STREAM" source="aws.cloudwatch.log-stream" defaultValue="app-log-stream"/>
 
     <!-- Console appender (local dev) -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -12,22 +15,23 @@
     <appender name="CLOUD_WATCH" class="ca.pjer.logback.AwsLogsAppender">
 
         <!-- CloudWatch Log Group name (must already exist or set createIfNeeded=true) -->
-        <logGroupName>/spring-demo/app-logs</logGroupName>
+        <logGroupName>${CW_LOG_GROUP}</logGroupName>
 
-        <!-- Log Stream name — use ${instanceId} in EC2 for per-instance streams -->
-        <logStreamName>spring-boot-stream</logStreamName>
+        <!-- Log Stream name; use ${instanceId} in EC2 for per-instance streams -->
+        <logStreamName>${CW_LOG_STREAM}</logStreamName>
 
         <!-- AWS region -->
-        <region>ap-south-1</region>
+        <logRegion>${AWS_REGION}</logRegion>
 
         <!-- Flush every 2 seconds even if buffer isn't full -->
-        <flushPeriod>2000</flushPeriod>
+        <maxFlushTimeMillis>2000</maxFlushTimeMillis>
 
         <!-- Max events per batch (CloudWatch limit is 10,000) -->
-        <maxBatchCount>128</maxBatchCount>
+        <maxBatchLogEvents>128</maxBatchLogEvents>
 
-        <!-- Format: plain text is fine; JSON is better for querying -->
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
 
     </appender>
 

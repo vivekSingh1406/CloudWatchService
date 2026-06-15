@@ -1,35 +1,45 @@
 # CloudWatchService
 
-1. Create S3 bucket:
-   aws s3api create-bucket --bucket my-spring-logs-bucket \
-   --region ap-south-1 \
-   --create-bucket-configuration LocationConstraint=ap-south-1
+Spring Boot service that writes test log messages to AWS CloudWatch Logs.
 
-2. Deploy Lambda:
-   mvn clean package
-   aws lambda create-function \
-   --function-name LogToS3Handler \
-   --runtime java17 \
-   --handler com.example.lambda.LogToS3Handler::handleRequest \
-   --role arn:aws:iam::ACCOUNT:role/lambda-logs-role \
-   --zip-file fileb://target/spring-aws-logs-0.0.1-SNAPSHOT.jar \
-   --environment Variables={S3_BUCKET_NAME=my-spring-logs-bucket} \
-   --timeout 30 --memory-size 256 \
-   --region ap-south-1
+## Configuration
 
-3. Allow CloudWatch Logs to invoke Lambda:
-   (run the aws lambda add-permission command above)
+Set AWS credentials through environment variables or another supported AWS credentials provider:
 
-4. Run Spring Boot:
-   mvn spring-boot:run
+```bash
+export AWS_ACCESS_KEY_ID=your-access-key
+export AWS_SECRET_ACCESS_KEY=your-secret-key
+```
 
-5. Create subscription filter (one time):
-   POST http://localhost:8080/api/setup/subscription
-   ?lambdaArn=arn:aws:lambda:ap-south-1:ACCOUNT:function:LogToS3Handler
+The default application settings are in `src/main/resources/application.yaml`:
 
-6. Generate some logs:
-   POST http://localhost:8080/api/log
-   Body: { "message": "hello from Spring Boot" }
+```yaml
+server:
+  port: 8081
 
-7. Check S3:
-   aws s3 ls s3://my-spring-logs-bucket/logs/ --recursive
+aws:
+  region: ap-south-1
+  cloudwatch:
+    log-group: sprint-boot-application
+    log-stream: app-log-stream
+```
+
+## IAM Permissions
+
+Use `src/main/resources/IAM.json` as the minimum policy shape for the credentials used by the app.
+
+## Run
+
+```bash
+mvn spring-boot:run
+```
+
+## Generate Logs
+
+```bash
+curl -X POST http://localhost:8081/api/trigger \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"hello from Spring Boot"}'
+```
+
+Then check the configured CloudWatch log group and stream.
